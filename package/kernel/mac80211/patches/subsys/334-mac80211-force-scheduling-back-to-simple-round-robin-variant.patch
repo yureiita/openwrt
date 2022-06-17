@@ -1,0 +1,54 @@
+--- a/net/mac80211/tx.c
++++ b/net/mac80211/tx.c
+@@ -3819,9 +3819,9 @@ encap_out:
+ 	 * Because of that, we register estimated tx time as airtime if either
+ 	 * AQL or ATF support is missing.
+ 	 */
+-	if (!wiphy_ext_feature_isset(local->hw.wiphy, NL80211_EXT_FEATURE_AQL) ||
+-	    !wiphy_ext_feature_isset(local->hw.wiphy,
+-				     NL80211_EXT_FEATURE_AIRTIME_FAIRNESS))
++	if (!wiphy_ext_feature_isset(local->hw.wiphy, NL80211_EXT_FEATURE_AQL) &&
++	    wiphy_ext_feature_isset(local->hw.wiphy,
++				    NL80211_EXT_FEATURE_AIRTIME_FAIRNESS))
+ 		ieee80211_register_airtime(txq, airtime, 0);
+ 
+ 	if (!wiphy_ext_feature_isset(local->hw.wiphy, NL80211_EXT_FEATURE_AQL))
+@@ -3912,14 +3912,23 @@ static void __ieee80211_insert_txq(struc
+ 	struct airtime_info *air_info = to_airtime_info(&txqi->txq);
+ 	u32 aql_time = 0;
+ 
++	airtime_sched_delete(&air_sched->active_txqs, &air_info->schedule_order);
++
++	if (!wiphy_ext_feature_isset(local->hw.wiphy,
++				     NL80211_EXT_FEATURE_AIRTIME_FAIRNESS)) {
++		air_info->v_t_cur = ktime_get_boottime_ns();
++		goto out;
++	}
++
+ 	if (wiphy_ext_feature_isset(local->hw.wiphy, NL80211_EXT_FEATURE_AQL)) {
+ 	    aql_time = atomic_read(&air_info->aql_tx_pending);
+ 	    aql_time *= air_info->weight_reciprocal;
+ 	    aql_time >>= IEEE80211_RECIPROCAL_SHIFT_STA - IEEE80211_WEIGHT_SHIFT;
+ 	}
+ 
+-	airtime_sched_delete(&air_sched->active_txqs, &air_info->schedule_order);
+ 	air_info->v_t_cur = air_info->v_t + aql_time;
++
++out:
+ 	airtime_sched_insert(&air_sched->active_txqs, &air_info->schedule_order);
+ }
+ 
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -10100,11 +10100,6 @@ int ath10k_mac_register(struct ath10k *a
+ 		wiphy_ext_feature_set(ar->hw->wiphy,
+ 				      NL80211_EXT_FEATURE_ACK_SIGNAL_SUPPORT);
+ 
+-	if (ath10k_peer_stats_enabled(ar) ||
+-	    test_bit(WMI_SERVICE_REPORT_AIRTIME, ar->wmi.svc_map))
+-		wiphy_ext_feature_set(ar->hw->wiphy,
+-				      NL80211_EXT_FEATURE_AIRTIME_FAIRNESS);
+-
+ 	if (test_bit(WMI_SERVICE_RTT_RESPONDER_ROLE, ar->wmi.svc_map))
+ 		wiphy_ext_feature_set(ar->hw->wiphy,
+ 				      NL80211_EXT_FEATURE_ENABLE_FTM_RESPONDER);
